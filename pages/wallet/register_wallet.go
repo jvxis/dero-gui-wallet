@@ -15,14 +15,14 @@ import (
 	"gioui.org/widget"
 	"gioui.org/widget/material"
 	"github.com/deroproject/derohe/transaction"
+	"github.com/g45t345rt/g45w/animation"
 	"github.com/g45t345rt/g45w/app_instance"
+	"github.com/g45t345rt/g45w/components"
 	"github.com/g45t345rt/g45w/containers/notification_modals"
 	"github.com/g45t345rt/g45w/containers/recent_txs_modal"
 	"github.com/g45t345rt/g45w/lang"
 	"github.com/g45t345rt/g45w/registration"
 	"github.com/g45t345rt/g45w/router"
-	"github.com/g45t345rt/g45w/ui/animation"
-	"github.com/g45t345rt/g45w/ui/components"
 	"github.com/g45t345rt/g45w/utils"
 	"github.com/g45t345rt/g45w/wallet_manager"
 	"github.com/shirou/gopsutil/cpu"
@@ -217,7 +217,7 @@ func NewRegisterWalletForm() *RegisterWalletForm {
 }
 
 func (p *RegisterWalletForm) Layout(gtx layout.Context, th *material.Theme) layout.Dimensions {
-	if p.buttonStart.Clickable.Clicked() {
+	if p.buttonStart.Clicked() {
 		err := p.startRegistration()
 		if err != nil {
 			notification_modals.ErrorInstance.SetText("Error", err.Error())
@@ -225,7 +225,7 @@ func (p *RegisterWalletForm) Layout(gtx layout.Context, th *material.Theme) layo
 		}
 	}
 
-	if p.buttonStop.Clickable.Clicked() {
+	if p.buttonStop.Clicked() {
 		p.normalReg.Stop()
 	}
 
@@ -353,7 +353,7 @@ func NewSendRegistrationForm() *SendRegistrationForm {
 }
 
 func (p *SendRegistrationForm) Layout(gtx layout.Context, th *material.Theme) layout.Dimensions {
-	if p.buttonSend.Clickable.Clicked() {
+	if p.buttonSend.Clicked() {
 		err := p.sendTransaction()
 		if err != nil {
 			notification_modals.ErrorInstance.SetVisible(true, 0)
@@ -400,7 +400,7 @@ func (p *SendRegistrationForm) sendTransaction() error {
 		return err
 	}
 
-	err = wallet.StoreOutgoingTx(tx, "")
+	err = wallet.InsertOutgoingTx(tx, "")
 	if err != nil {
 		return err
 	}

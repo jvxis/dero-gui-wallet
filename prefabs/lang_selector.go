@@ -3,7 +3,6 @@ package prefabs
 import (
 	"fmt"
 	"image/color"
-	"log"
 
 	"gioui.org/font"
 	"gioui.org/layout"
@@ -14,9 +13,9 @@ import (
 	"gioui.org/widget/material"
 	"github.com/g45t345rt/g45w/app_instance"
 	"github.com/g45t345rt/g45w/assets"
+	"github.com/g45t345rt/g45w/components"
 	"github.com/g45t345rt/g45w/lang"
 	"github.com/g45t345rt/g45w/router"
-	"github.com/g45t345rt/g45w/ui/components"
 	"golang.org/x/exp/shiny/materialdesign/icons"
 )
 
@@ -47,10 +46,7 @@ func NewLangSelector(defaultLangKey string) *LangSelector {
 
 	languages := lang.SupportedLanguages
 	for _, language := range languages {
-		img, err := assets.GetImage(language.ImgPath)
-		if err != nil {
-			log.Fatal(err)
-		}
+		img, _ := assets.GetImage(language.ImgPath)
 
 		langImg := &components.Image{
 			Src:      paint.NewImageOp(img),
@@ -101,13 +97,13 @@ func (r *LangSelector) Changed() bool {
 func (r *LangSelector) Layout(gtx layout.Context, th *material.Theme) layout.Dimensions {
 	r.changed = false
 
-	if r.ButtonSelect.Clickable.Clicked() {
+	if r.ButtonSelect.Clicked() {
 		r.SelectModal.Modal.SetVisible(true)
 	}
 
-	selected := r.SelectModal.Selected()
+	selected, key := r.SelectModal.Selected()
 	if selected {
-		r.Value = r.SelectModal.SelectedKey
+		r.Value = key
 		r.changed = true
 		r.SelectModal.Modal.SetVisible(false)
 	}

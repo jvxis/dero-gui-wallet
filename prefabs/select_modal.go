@@ -12,15 +12,15 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
-	"github.com/g45t345rt/g45w/ui/components"
+	"github.com/g45t345rt/g45w/components"
 )
 
 type SelectModal struct {
-	SelectedKey string
-	Modal       *components.Modal
+	Modal *components.Modal
 
-	list     *widget.List
-	selected bool
+	list        *widget.List
+	selected    bool
+	selectedKey string
 }
 
 func NewSelectModal() *SelectModal {
@@ -44,8 +44,8 @@ func NewSelectModal() *SelectModal {
 	}
 }
 
-func (l *SelectModal) Selected() bool {
-	return l.selected
+func (l *SelectModal) Selected() (bool, string) {
+	return l.selected, l.selectedKey
 }
 
 func (l *SelectModal) Layout(gtx layout.Context, th *material.Theme, items []*SelectListItem) layout.Dimensions {
@@ -61,7 +61,7 @@ func (l *SelectModal) Layout(gtx layout.Context, th *material.Theme, items []*Se
 
 			return listStyle.Layout(gtx, len(items), func(gtx layout.Context, index int) layout.Dimensions {
 				if items[index].clickable.Clicked() {
-					l.SelectedKey = items[index].key
+					l.selectedKey = items[index].Key
 					l.selected = true
 					op.InvalidateOp{}.Add(gtx.Ops)
 				}
@@ -73,7 +73,7 @@ func (l *SelectModal) Layout(gtx layout.Context, th *material.Theme, items []*Se
 }
 
 type SelectListItem struct {
-	key       string
+	Key       string
 	element   SelectListItemElement
 	clickable *widget.Clickable
 }
@@ -82,7 +82,7 @@ type SelectListItemElement = func(gtx layout.Context, index int, th *material.Th
 
 func NewSelectListItem(key string, element SelectListItemElement) *SelectListItem {
 	return &SelectListItem{
-		key:       key,
+		Key:       key,
 		element:   element,
 		clickable: new(widget.Clickable),
 	}

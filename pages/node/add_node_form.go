@@ -12,12 +12,12 @@ import (
 	"gioui.org/widget"
 	"gioui.org/widget/material"
 	"github.com/deroproject/derohe/walletapi"
+	"github.com/g45t345rt/g45w/animation"
+	"github.com/g45t345rt/g45w/app_data"
+	"github.com/g45t345rt/g45w/components"
 	"github.com/g45t345rt/g45w/containers/notification_modals"
 	"github.com/g45t345rt/g45w/lang"
-	"github.com/g45t345rt/g45w/node_manager"
 	"github.com/g45t345rt/g45w/router"
-	"github.com/g45t345rt/g45w/ui/animation"
-	"github.com/g45t345rt/g45w/ui/components"
 	"github.com/tanema/gween"
 	"github.com/tanema/gween/ease"
 	"golang.org/x/exp/shiny/materialdesign/icons"
@@ -29,10 +29,9 @@ type PageAddNodeForm struct {
 	animationEnter *animation.Animation
 	animationLeave *animation.Animation
 
-	buttonAddNode *components.Button
-	txtEndpoint   *components.TextField
-	txtName       *components.TextField
-	submitting    bool
+	buttonAdd   *components.Button
+	txtEndpoint *components.TextField
+	txtName     *components.TextField
 
 	list *widget.List
 }
@@ -52,7 +51,8 @@ func NewPageAddNodeForm() *PageAddNodeForm {
 	list.Axis = layout.Vertical
 
 	addIcon, _ := widget.NewIcon(icons.ContentAdd)
-	buttonAddNode := components.NewButton(components.ButtonStyle{
+	loadingIcon, _ := widget.NewIcon(icons.NavigationRefresh)
+	buttonAdd := components.NewButton(components.ButtonStyle{
 		Rounded:         components.UniformRounded(unit.Dp(5)),
 		Icon:            addIcon,
 		TextColor:       color.NRGBA{R: 255, G: 255, B: 255, A: 255},
@@ -61,9 +61,10 @@ func NewPageAddNodeForm() *PageAddNodeForm {
 		IconGap:         unit.Dp(10),
 		Inset:           layout.UniformInset(unit.Dp(10)),
 		Animation:       components.NewButtonAnimationDefault(),
+		LoadingIcon:     loadingIcon,
 	})
-	buttonAddNode.Label.Alignment = text.Middle
-	buttonAddNode.Style.Font.Weight = font.Bold
+	buttonAdd.Label.Alignment = text.Middle
+	buttonAdd.Style.Font.Weight = font.Bold
 
 	txtName := components.NewTextField()
 	txtEndpoint := components.NewTextField()
@@ -72,9 +73,9 @@ func NewPageAddNodeForm() *PageAddNodeForm {
 		animationEnter: animationEnter,
 		animationLeave: animationLeave,
 
-		buttonAddNode: buttonAddNode,
-		txtName:       txtName,
-		txtEndpoint:   txtEndpoint,
+		buttonAdd:   buttonAdd,
+		txtName:     txtName,
+		txtEndpoint: txtEndpoint,
 
 		list: list,
 	}
@@ -120,7 +121,7 @@ func (p *PageAddNodeForm) Layout(gtx layout.Context, th *material.Theme) layout.
 		}
 	}
 
-	if p.buttonAddNode.Clickable.Clicked() {
+	if p.buttonAdd.Clicked() {
 		p.submitForm(gtx)
 	}
 
@@ -136,8 +137,8 @@ func (p *PageAddNodeForm) Layout(gtx layout.Context, th *material.Theme) layout.
 			return p.txtEndpoint.Layout(gtx, th, lang.Translate("Endpoint"), "wss://node.deronfts.com/ws")
 		},
 		func(gtx layout.Context) layout.Dimensions {
-			p.buttonAddNode.Text = lang.Translate("ADD NODE")
-			return p.buttonAddNode.Layout(gtx, th)
+			p.buttonAdd.Text = lang.Translate("ADD NODE")
+			return p.buttonAdd.Layout(gtx, th)
 		},
 	}
 
@@ -161,15 +162,10 @@ func (p *PageAddNodeForm) Layout(gtx layout.Context, th *material.Theme) layout.
 }
 
 func (p *PageAddNodeForm) submitForm(gtx layout.Context) {
-	if p.submitting {
-		return
-	}
-
-	p.submitting = true
-
+	p.buttonAdd.SetLoading(true)
 	go func() {
 		setError := func(err error) {
-			p.submitting = false
+			p.buttonAdd.SetLoading(false)
 			notification_modals.ErrorInstance.SetText("Error", err.Error())
 			notification_modals.ErrorInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
 		}
@@ -193,7 +189,7 @@ func (p *PageAddNodeForm) submitForm(gtx layout.Context) {
 			return
 		}
 
-		err = node_manager.AddNode(node_manager.NodeConnection{
+		err = app_data.InsertNodeConnection(app_data.NodeConnection{
 			Name:     txtName.Text(),
 			Endpoint: txtEndpoint.Text(),
 		})
@@ -202,7 +198,7 @@ func (p *PageAddNodeForm) submitForm(gtx layout.Context) {
 			return
 		}
 
-		p.submitting = false
+		p.buttonAdd.SetLoading(false)
 		notification_modals.SuccessInstance.SetText(lang.Translate("Success"), "new noded added")
 		notification_modals.SuccessInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
 		page_instance.header.GoBack()

@@ -13,9 +13,9 @@ import (
 	"gioui.org/widget/material"
 	"github.com/deroproject/derohe/walletapi"
 	"github.com/g45t345rt/g45w/app_instance"
+	"github.com/g45t345rt/g45w/components"
 	"github.com/g45t345rt/g45w/lang"
 	"github.com/g45t345rt/g45w/router"
-	"github.com/g45t345rt/g45w/ui/components"
 	"github.com/g45t345rt/g45w/utils"
 	"github.com/g45t345rt/g45w/wallet_manager"
 	"github.com/skratchdot/open-golang/open"
@@ -82,21 +82,27 @@ func (r *RecentTxsModal) startCheckingPendingTxs() {
 	}()
 }
 
-func (r *RecentTxsModal) LoadOutgoingTxs() {
+func (r *RecentTxsModal) LoadOutgoingTxs() error {
 	r.txItems = make([]TxItem, 0)
 
 	wallet := wallet_manager.OpenedWallet
 	if wallet != nil {
-		outgoingTxs, err := wallet.GetLastOutgoingTxs()
+		limit := uint64(10)
+		outgoingTxs, err := wallet.GetOutgoingTxs(wallet_manager.GetOutgoingTxsParams{
+			OrderBy:    "timestamp",
+			Descending: true,
+			Limit:      &limit,
+		})
 		if err != nil {
-			fmt.Println(err)
-			return
+			return err
 		}
 
 		for _, tx := range outgoingTxs {
 			r.txItems = append(r.txItems, *NewTxItem(tx))
 		}
 	}
+
+	return nil
 }
 
 func (r *RecentTxsModal) SetVisible(visible bool) {
@@ -115,7 +121,7 @@ func (r *RecentTxsModal) layout(gtx layout.Context, th *material.Theme) {
 		}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					lbl := material.Label(th, unit.Sp(20), fmt.Sprintf("%s (%d)", lang.Translate("Recent Transactions"), len(r.txItems)))
+					lbl := material.Label(th, unit.Sp(20), fmt.Sprintf("%s (%d)", lang.Translate("Outgoing Transactions"), len(r.txItems)))
 					lbl.Font.Weight = font.Bold
 					return lbl.Layout(gtx)
 				}),
@@ -194,7 +200,7 @@ func (item *TxItem) Layout(gtx layout.Context, th *material.Theme) layout.Dimens
 
 	date := time.Unix(item.tx.Timestamp.Int64, 0)
 
-	if item.buttonOpen.Clickable.Clicked() {
+	if item.buttonOpen.Clicked() {
 		go open.Run(fmt.Sprintf("https://explorer.dero.io/tx/%s", txId))
 	}
 

@@ -17,12 +17,12 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
+	"github.com/g45t345rt/g45w/animation"
+	"github.com/g45t345rt/g45w/components"
 	"github.com/g45t345rt/g45w/containers/notification_modals"
 	"github.com/g45t345rt/g45w/lang"
 	"github.com/g45t345rt/g45w/router"
 	"github.com/g45t345rt/g45w/settings"
-	"github.com/g45t345rt/g45w/ui/animation"
-	"github.com/g45t345rt/g45w/ui/components"
 	"github.com/tanema/gween"
 	"github.com/tanema/gween/ease"
 	"golang.org/x/exp/shiny/materialdesign/icons"
@@ -58,12 +58,12 @@ func NewPageInfo() *PageInfo {
 	// it's used by the python to generate language json dictionary
 	// we don't use lang.Translate directly here because it needs to be inside the Layout func or the value won't be updated after language change
 	infoItems := []*InfoListItem{
-		NewInfoListItem("App Directory", settings.AppDir),         //@lang.Translate("App Directory")
-		NewInfoListItem("Node Directory", settings.NodeDir),       //@lang.Translate("Node Directory")
-		NewInfoListItem("Wallets Directory", settings.WalletsDir), //@lang.Translate("Wallets Directory")
-		NewInfoListItem("Version", settings.Version),              //@lang.Translate("Version")
-		NewInfoListItem("Git Version", settings.GitVersion),       //@lang.Translate("Git Version")
-		NewInfoListItem("Build Time", buildTime),                  //@lang.Translate("Build Time")
+		NewInfoListItem("App Directory", settings.AppDir),                        //@lang.Translate("App Directory")
+		NewInfoListItem("Integrated Node Directory", settings.IntegratedNodeDir), //@lang.Translate("Node Directory")
+		NewInfoListItem("Wallets Directory", settings.WalletsDir),                //@lang.Translate("Wallets Directory")
+		NewInfoListItem("Version", settings.Version),                             //@lang.Translate("Version")
+		NewInfoListItem("Git Version", settings.GitVersion),                      //@lang.Translate("Git Version")
+		NewInfoListItem("Build Time", buildTime),                                 //@lang.Translate("Build Time")
 	}
 
 	return &PageInfo{

@@ -19,12 +19,16 @@ import (
 
 var Chain *blockchain.Blockchain
 var RPCServer *derodrpc.RPCServer
+var Running bool
 
 func Start() error {
-	nodeDir := settings.NodeDir
+	if Running {
+		return nil
+	}
+
+	nodeDir := settings.IntegratedNodeDir
 
 	runtime.MemProfileRate = 0
-	globals.Arguments = make(map[string]interface{})
 
 	globals.Arguments["--timeisinsync"] = false
 	globals.Arguments["--p2p-bind"] = nil
@@ -75,6 +79,7 @@ func Start() error {
 	}
 
 	globals.Cron.Start()
+	Running = true
 	return nil
 }
 
@@ -84,11 +89,13 @@ func Stop() {
 	Chain.Shutdown()
 	globals.Cron.Stop()
 	metrics.Set.UnregisterAllMetrics()
+	Running = false
 }
 
 type NodeStatus struct {
 	Height          int64
 	BestHeight      int64
+	StableHeight    int64
 	MemCount        int
 	RegCount        int
 	PeerInCount     uint64
@@ -110,14 +117,14 @@ func NewNodeStatus(d time.Duration) *NodeStatus {
 	go func() {
 		for range ticker.C {
 			if nodeStatus.isActive {
-				nodeStatus.update()
+				nodeStatus.Update()
 				window.Invalidate()
 				nodeStatus.isActive = false
 			}
 		}
 	}()
 
-	nodeStatus.update()
+	nodeStatus.Update()
 	return nodeStatus
 }
 
@@ -125,13 +132,14 @@ func (n *NodeStatus) Active() {
 	n.isActive = true
 }
 
-func (n *NodeStatus) update() {
+func (n *NodeStatus) Update() {
 	if Chain == nil {
 		return
 	}
 
 	n.Height = Chain.Get_Height()
 	bestHeight, _ := p2p.Best_Peer_Height()
+	n.StableHeight = Chain.Get_Stable_Height()
 	n.BestHeight = bestHeight
 	//topo_height := chain.Load_TOPO_HEIGHT()
 
@@ -175,7 +183,6 @@ func NewNodeSize(d time.Duration) *NodeSize {
 		}
 	}()
 
-	nodedSize.update()
 	return nodedSize
 }
 
@@ -184,7 +191,7 @@ func (n *NodeSize) Active() {
 }
 
 func (n *NodeSize) update() {
-	nodeDir := settings.NodeDir
+	nodeDir := settings.IntegratedNodeDir
 	size, _ := utils.GetFolderSize(nodeDir)
 	n.Size = size
 }

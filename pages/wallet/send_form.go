@@ -19,15 +19,15 @@ import (
 	"github.com/deroproject/derohe/cryptography/crypto"
 	"github.com/deroproject/derohe/globals"
 	"github.com/deroproject/derohe/rpc"
-	"github.com/deroproject/derohe/transaction"
-	"github.com/g45t345rt/g45w/app_instance"
+	"github.com/g45t345rt/g45w/animation"
+	"github.com/g45t345rt/g45w/components"
+	"github.com/g45t345rt/g45w/containers/build_tx_modal.go"
 	"github.com/g45t345rt/g45w/containers/notification_modals"
-	"github.com/g45t345rt/g45w/containers/recent_txs_modal"
 	"github.com/g45t345rt/g45w/lang"
 	"github.com/g45t345rt/g45w/prefabs"
 	"github.com/g45t345rt/g45w/router"
-	"github.com/g45t345rt/g45w/ui/animation"
-	"github.com/g45t345rt/g45w/ui/components"
+	"github.com/g45t345rt/g45w/settings"
+	"github.com/g45t345rt/g45w/utils"
 	"github.com/g45t345rt/g45w/wallet_manager"
 	"github.com/tanema/gween"
 	"github.com/tanema/gween/ease"
@@ -37,20 +37,18 @@ import (
 type PageSendForm struct {
 	isActive bool
 
-	SCID                string
-	txtAmount           *components.TextField
-	txtWalletAddr       *components.Input
-	buttonSendTx        *components.Button
-	buttonContacts      *components.Button
-	buttonOptions       *components.Button
-	modalWalletPassword *prefabs.PasswordModal
+	txtAmount      *components.TextField
+	txtWalletAddr  *components.Input
+	buttonBuildTx  *components.Button
+	buttonContacts *components.Button
+	buttonOptions  *components.Button
+
+	token wallet_manager.Token
 
 	ringSizeSelector *prefabs.RingSizeSelector
 
 	animationEnter *animation.Animation
 	animationLeave *animation.Animation
-
-	buildTx *transaction.Transaction
 
 	list *widget.List
 }
@@ -58,23 +56,23 @@ type PageSendForm struct {
 var _ router.Page = &PageSendForm{}
 
 func NewPageSendForm() *PageSendForm {
-	sendIcon, _ := widget.NewIcon(icons.ContentSend)
-	loadingIcon, _ := widget.NewIcon(icons.NavigationRefresh)
-	buttonSendTx := components.NewButton(components.ButtonStyle{
+	buildIcon, _ := widget.NewIcon(icons.HardwareMemory)
+	buttonBuildTx := components.NewButton(components.ButtonStyle{
 		Rounded:         components.UniformRounded(unit.Dp(5)),
-		Icon:            sendIcon,
+		Icon:            buildIcon,
 		TextColor:       color.NRGBA{R: 255, G: 255, B: 255, A: 255},
 		BackgroundColor: color.NRGBA{R: 0, G: 0, B: 0, A: 255},
 		TextSize:        unit.Sp(14),
 		IconGap:         unit.Dp(10),
 		Inset:           layout.UniformInset(unit.Dp(10)),
 		Animation:       components.NewButtonAnimationDefault(),
-		LoadingIcon:     loadingIcon,
 	})
-	buttonSendTx.Label.Alignment = text.Middle
-	buttonSendTx.Style.Font.Weight = font.Bold
+	buttonBuildTx.Label.Alignment = text.Middle
+	buttonBuildTx.Style.Font.Weight = font.Bold
 
 	txtAmount := components.NewTextField()
+	txtAmount.Input.TextSize = unit.Sp(26)
+	txtAmount.Input.FontWeight = font.Bold
 	txtAmount.Editor().InputHint = key.HintNumeric
 
 	txtWalletAddr := components.NewInput()
@@ -90,7 +88,8 @@ func NewPageSendForm() *PageSendForm {
 	list := new(widget.List)
 	list.Axis = layout.Vertical
 
-	ringSizeSelector := prefabs.NewRingSizeSelector("16")
+	defaultRingSize := settings.App.SendRingSize
+	ringSizeSelector := prefabs.NewRingSizeSelector(defaultRingSize)
 
 	optionIcon, _ := widget.NewIcon(icons.ActionSettingsEthernet)
 	buttonOptions := components.NewButton(components.ButtonStyle{
@@ -124,26 +123,16 @@ func NewPageSendForm() *PageSendForm {
 		Animation: components.NewButtonAnimationDefault(),
 	})
 
-	modalWalletPassword := prefabs.NewPasswordModal()
-
-	app_instance.Router.AddLayout(router.KeyLayout{
-		DrawIndex: 1,
-		Layout: func(gtx layout.Context, th *material.Theme) {
-			modalWalletPassword.Layout(gtx, th)
-		},
-	})
-
 	return &PageSendForm{
-		txtAmount:           txtAmount,
-		txtWalletAddr:       txtWalletAddr,
-		buttonSendTx:        buttonSendTx,
-		ringSizeSelector:    ringSizeSelector,
-		animationEnter:      animationEnter,
-		animationLeave:      animationLeave,
-		list:                list,
-		buttonContacts:      buttonContacts,
-		buttonOptions:       buttonOptions,
-		modalWalletPassword: modalWalletPassword,
+		txtAmount:        txtAmount,
+		txtWalletAddr:    txtWalletAddr,
+		buttonBuildTx:    buttonBuildTx,
+		ringSizeSelector: ringSizeSelector,
+		animationEnter:   animationEnter,
+		animationLeave:   animationLeave,
+		list:             list,
+		buttonContacts:   buttonContacts,
+		buttonOptions:    buttonOptions,
 	}
 }
 
@@ -185,84 +174,78 @@ func (p *PageSendForm) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 		}
 	}
 
-	if p.buttonSendTx.Clicked() {
-		p.buttonSendTx.SetLoading(true)
+	if p.buttonBuildTx.Clicked() {
 		go func() {
-			err := p.buildTransaction()
+			err := p.prepareTx()
 			if err != nil {
-				p.buttonSendTx.SetLoading(false)
 				notification_modals.ErrorInstance.SetText(lang.Translate("Error"), err.Error())
 				notification_modals.ErrorInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
-			} else {
-				p.modalWalletPassword.Modal.SetVisible(true)
 			}
 		}()
 	}
 
-	if p.buttonOptions.Clickable.Clicked() {
+	if p.buttonOptions.Clicked() {
 		page_instance.pageRouter.SetCurrent(PAGE_SEND_OPTIONS_FORM)
 		page_instance.header.AddHistory(PAGE_SEND_OPTIONS_FORM)
 	}
 
-	if p.buttonContacts.Clickable.Clicked() {
+	if p.buttonContacts.Clicked() {
 		page_instance.pageRouter.SetCurrent(PAGE_CONTACTS)
 		page_instance.header.AddHistory(PAGE_CONTACTS)
 	}
 
-	if p.modalWalletPassword.Modal.Closed() {
-		p.buttonSendTx.SetLoading(false)
+	if build_tx_modal.Instance.TxSent() {
+		p.clearForm()
 	}
 
-	submitted, password := p.modalWalletPassword.Submit()
-	if submitted {
-		wallet := wallet_manager.OpenedWallet
-		validPassword := wallet.Memory.Check_Password(password)
-
-		if !validPassword {
-			p.buttonSendTx.SetLoading(false)
-			p.modalWalletPassword.StartWrongPassAnimation()
-		} else {
-			err := p.sendBuildTransaction()
-			p.buttonSendTx.SetLoading(false)
-			if err != nil {
-				notification_modals.ErrorInstance.SetText(lang.Translate("Error"), err.Error())
-				notification_modals.ErrorInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
-			} else {
-				p.modalWalletPassword.Modal.SetVisible(false)
-			}
+	{
+		changed, value := p.ringSizeSelector.Changed()
+		if changed {
+			settings.App.SendRingSize = value
+			settings.Save()
 		}
 	}
 
 	widgets := []layout.Widget{
 		func(gtx layout.Context) layout.Dimensions {
+			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					r := op.Record(gtx.Ops)
+					dims := layout.UniformInset(unit.Dp(10)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								lbl := material.Label(th, unit.Sp(22), p.token.Name)
+								lbl.Font.Weight = font.Bold
+								return lbl.Layout(gtx)
+							}),
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								scId := utils.ReduceTxId(p.token.SCID)
 
-			r := op.Record(gtx.Ops)
-			dims := layout.UniformInset(unit.Dp(10)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						lbl := material.Label(th, unit.Sp(18), "Selected Asset [DERO]")
-						lbl.Font.Weight = font.Bold
-						return lbl.Layout(gtx)
-					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						lbl := material.Label(th, unit.Sp(16), "00000...00000")
-						lbl.Color = color.NRGBA{R: 0, G: 0, B: 0, A: 150}
-						return lbl.Layout(gtx)
-					}),
-				)
-			})
-			c := r.Stop()
+								if p.token.Symbol.Valid {
+									scId = fmt.Sprintf("%s (%s)", scId, p.token.Symbol.String)
+								}
 
-			paint.FillShape(gtx.Ops, color.NRGBA{R: 255, G: 255, B: 255, A: 255}, clip.UniformRRect(
-				image.Rectangle{Max: dims.Size},
-				gtx.Dp(10),
-			).Op(gtx.Ops))
+								lbl := material.Label(th, unit.Sp(16), scId)
+								lbl.Color = color.NRGBA{A: 150}
+								return lbl.Layout(gtx)
+							}),
+						)
+					})
+					c := r.Stop()
 
-			c.Add(gtx.Ops)
-			return dims
+					paint.FillShape(gtx.Ops, color.NRGBA{R: 255, G: 255, B: 255, A: 255}, clip.UniformRRect(
+						image.Rectangle{Max: dims.Size},
+						gtx.Dp(10),
+					).Op(gtx.Ops))
+
+					c.Add(gtx.Ops)
+					return dims
+				}),
+			)
 		},
 		func(gtx layout.Context) layout.Dimensions {
-			return p.txtAmount.Layout(gtx, th, lang.Translate("Amount"), "")
+			v := utils.ShiftNumber{Number: 0, Decimals: int(p.token.Decimals)}
+			return p.txtAmount.Layout(gtx, th, lang.Translate("Amount"), v.Format())
 		},
 		func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
@@ -285,9 +268,12 @@ func (p *PageSendForm) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					addr := p.txtWalletAddr.Editor.Text()
-					contact, ok := page_instance.contactManager.Contacts[addr]
 
-					if ok {
+					wallet := wallet_manager.OpenedWallet
+
+					contact, _ := wallet.GetContact(addr)
+
+					if contact != nil {
 						return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 							layout.Rigid(layout.Spacer{Height: unit.Dp(3)}.Layout),
 							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -320,13 +306,8 @@ func (p *PageSendForm) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 			return p.buttonOptions.Layout(gtx, th)
 		},
 		func(gtx layout.Context) layout.Dimensions {
-			if p.buttonSendTx.Loading {
-				p.buttonSendTx.Text = lang.Translate("BUILDING...")
-			} else {
-				p.buttonSendTx.Text = lang.Translate("SEND TRANSACTION")
-			}
-
-			return p.buttonSendTx.Layout(gtx, th)
+			p.buttonBuildTx.Text = lang.Translate("BUILD TRANSACTION")
+			return p.buttonBuildTx.Layout(gtx, th)
 		},
 		func(gtx layout.Context) layout.Dimensions {
 			return layout.Spacer{Height: unit.Dp(30)}.Layout(gtx)
@@ -352,28 +333,6 @@ func (p *PageSendForm) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 	})
 }
 
-func (p *PageSendForm) sendBuildTransaction() error {
-	txtDescription := page_instance.pageSendOptionsForm.txtDescription
-	wallet := wallet_manager.OpenedWallet
-	tx := p.buildTx
-
-	err := wallet.StoreOutgoingTx(tx, txtDescription.Value())
-	if err != nil {
-		return err
-	}
-
-	err = wallet.Memory.SendTransaction(tx)
-	if err != nil {
-		return err
-	}
-
-	recent_txs_modal.Instance.SetVisible(true)
-	page_instance.header.GoBack()
-	p.clearForm()
-
-	return nil
-}
-
 func (p *PageSendForm) clearForm() {
 	txtAmount := p.txtAmount
 	txtWalletAddr := p.txtWalletAddr
@@ -388,10 +347,7 @@ func (p *PageSendForm) clearForm() {
 	txtDstPort.SetValue("")
 }
 
-func (p *PageSendForm) buildTransaction() error {
-	p.buildTx = nil
-	wallet := wallet_manager.OpenedWallet
-
+func (p *PageSendForm) prepareTx() error {
 	txtAmount := p.txtAmount
 	if txtAmount.Value() == "" {
 		return fmt.Errorf(lang.Translate("Amount cannot be empty."))
@@ -431,21 +387,18 @@ func (p *PageSendForm) buildTransaction() error {
 		arguments = append(arguments, rpc.Argument{Name: rpc.RPC_DESTINATION_PORT, DataType: rpc.DataUint64, Value: destPort})
 	}
 
-	scId := crypto.HashHexToHash(p.SCID)
+	scId := crypto.HashHexToHash(p.token.SCID)
 	transfers := []rpc.Transfer{
 		{SCID: scId, Destination: txtWalletAddr.Value(), Amount: amount, Payload_RPC: arguments},
 	}
 
-	ringsize, err := strconv.ParseUint(p.ringSizeSelector.Value, 10, 64)
-	if err != nil {
-		return err
-	}
+	ringsize := uint64(p.ringSizeSelector.Value)
 
-	tx, err := wallet.Memory.TransferPayload0(transfers, ringsize, false, rpc.Arguments{}, 0, false)
-	if err != nil {
-		return err
-	}
+	build_tx_modal.Instance.Open(build_tx_modal.TxPayload{
+		Transfers: transfers,
+		Ringsize:  ringsize,
+		SCData:    rpc.Arguments{},
+	})
 
-	p.buildTx = tx
 	return nil
 }

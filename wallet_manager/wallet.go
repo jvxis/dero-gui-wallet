@@ -11,6 +11,7 @@ import (
 
 	"github.com/deroproject/derohe/cryptography/crypto"
 	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
 	"github.com/deroproject/derohe/transaction"
 	"github.com/deroproject/derohe/walletapi"
 	"github.com/g45t345rt/g45w/settings"
@@ -22,7 +23,7 @@ import (
 
 type Wallet struct {
 	Info   *WalletInfo
-	Memory *walletapi.Wallet_Memory
+	Memory *walletapi.Wallet_Disk
 	DB     *sql.DB
 }
 
@@ -84,7 +85,6 @@ func CloseOpenedWallet() {
 		go func() {
 			close(wallet.Memory.Quit) // make sure to close goroutines when wallet is in online mode
 			wallet.Memory.Close_Encrypted_Wallet()
-			wallet.Memory.Clean()
 		}()
 		wallet.DB.Close()
 		OpenedWallet = nil
@@ -99,12 +99,8 @@ func OpenWallet(addr string, password string) error {
 
 	walletsDir := settings.WalletsDir
 	walletPath := filepath.Join(walletsDir, addr, "wallet.db")
-	data, err := os.ReadFile(walletPath)
-	if err != nil {
-		return err
-	}
 
-	memory, err := walletapi.Open_Encrypted_Wallet_Memory(password, data)
+	memory, err := walletapi.Open_Encrypted_Wallet(walletPath, password)
 	if err != nil {
 		return err
 	}
@@ -118,9 +114,25 @@ func OpenWallet(addr string, password string) error {
 		return err
 	}
 
-	err = initOutgoingTxs(db)
+	err = initDatabaseOutgoingTxs(db)
 	if err != nil {
 		return err
+	}
+
+	err = initDatabaseTokens(db)
+	if err != nil {
+		return err
+	}
+
+	err = initDatabaseContacts(db)
+	if err != nil {
+		return err
+	}
+
+	account := memory.GetAccount()
+	// fix: looks like EntriesNative is not instantiated on startup but only in InsertReplace func???
+	if account.EntriesNative == nil {
+		account.EntriesNative = make(map[crypto.Hash][]rpc.Entry)
 	}
 
 	wallet := &Wallet{

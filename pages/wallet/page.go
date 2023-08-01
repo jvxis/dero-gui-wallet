@@ -12,13 +12,12 @@ import (
 	"gioui.org/op/paint"
 	"gioui.org/unit"
 	"gioui.org/widget/material"
+	"github.com/g45t345rt/g45w/animation"
 	"github.com/g45t345rt/g45w/app_instance"
-	"github.com/g45t345rt/g45w/contact_manager"
 	"github.com/g45t345rt/g45w/containers/bottom_bar"
 	"github.com/g45t345rt/g45w/containers/node_status_bar"
 	"github.com/g45t345rt/g45w/prefabs"
 	"github.com/g45t345rt/g45w/router"
-	"github.com/g45t345rt/g45w/ui/animation"
 	"github.com/g45t345rt/g45w/wallet_manager"
 	"github.com/tanema/gween"
 	"github.com/tanema/gween/ease"
@@ -36,8 +35,9 @@ type Page struct {
 	pageSCToken         *PageSCToken
 	pageContactForm     *PageContactForm
 	pageSendOptionsForm *PageSendOptionsForm
-
-	contactManager *contact_manager.ContactManager
+	pageSCFolders       *PageSCFolders
+	pageContacts        *PageContacts
+	pageTransaction     *PageTransaction
 
 	pageRouter *router.Router
 }
@@ -60,11 +60,10 @@ var (
 	PAGE_SEND_OPTIONS_FORM = "page_send_options_form"
 	PAGE_SC_FOLDERS        = "page_sc_folders"
 	PAGE_WALLET_INFO       = "page_wallet_info"
+	PAGE_TRANSACTION       = "page_transaction"
 )
 
 func New() *Page {
-	th := app_instance.Theme
-
 	animationEnter := animation.NewAnimation(false, gween.NewSequence(
 		gween.New(1, 0, .5, ease.OutCubic),
 	))
@@ -89,9 +88,6 @@ func New() *Page {
 	pageAddSCForm := NewPageAddSCForm()
 	pageRouter.Add(PAGE_ADD_SC_FORM, pageAddSCForm)
 
-	pageTxs := NewPageTxs()
-	pageRouter.Add(PAGE_TXS, pageTxs)
-
 	pageSCToken := NewPageSCToken()
 	pageRouter.Add(PAGE_SC_TOKEN, pageSCToken)
 
@@ -113,10 +109,10 @@ func New() *Page {
 	pageWalletInfo := NewPageWalletInfo()
 	pageRouter.Add(PAGE_WALLET_INFO, pageWalletInfo)
 
-	labelHeaderStyle := material.Label(th, unit.Sp(22), "")
-	labelHeaderStyle.Font.Weight = font.Bold
+	pageTransaction := NewPageTransaction()
+	pageRouter.Add(PAGE_TRANSACTION, pageTransaction)
 
-	header := prefabs.NewHeader(labelHeaderStyle, pageRouter)
+	header := prefabs.NewHeader(pageRouter)
 
 	page := &Page{
 		animationEnter: animationEnter,
@@ -129,6 +125,8 @@ func New() *Page {
 		pageSCToken:         pageSCToken,
 		pageContactForm:     pageContactForm,
 		pageSendOptionsForm: pageSendOptionsForm,
+		pageSCFolders:       pageSCFolders,
+		pageContacts:        pageContacts,
 
 		pageRouter: pageRouter,
 	}
@@ -148,13 +146,10 @@ func (p *Page) Enter() {
 		w := app_instance.Window
 		w.Option(app.StatusColor(color.NRGBA{A: 255}))
 
-		addr := openedWallet.Info.Addr
-		p.contactManager = contact_manager.NewContactManager(addr)
-		p.contactManager.Load()
-
 		p.animationLeave.Reset()
 		p.animationEnter.Start()
 
+		node_status_bar.Instance.Update()
 		lastHistory := p.header.GetLastHistory()
 		if lastHistory != nil {
 			p.pageRouter.SetCurrent(lastHistory)
@@ -217,7 +212,11 @@ func (p *Page) Layout(gtx layout.Context, th *material.Theme) layout.Dimensions 
 						Left: unit.Dp(30), Right: unit.Dp(30),
 						Top: unit.Dp(30), Bottom: unit.Dp(20),
 					}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						return p.header.Layout(gtx, th)
+						return p.header.Layout(gtx, th, func(gtx layout.Context, th *material.Theme, title string) layout.Dimensions {
+							lbl := material.Label(th, unit.Sp(22), title)
+							lbl.Font.Weight = font.Bold
+							return lbl.Layout(gtx)
+						})
 					})
 				}),
 				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {

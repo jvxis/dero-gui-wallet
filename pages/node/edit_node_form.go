@@ -15,13 +15,15 @@ import (
 	"gioui.org/widget"
 	"gioui.org/widget/material"
 	"github.com/deroproject/derohe/walletapi"
+	"github.com/g45t345rt/g45w/animation"
+	"github.com/g45t345rt/g45w/app_data"
 	"github.com/g45t345rt/g45w/app_instance"
+	"github.com/g45t345rt/g45w/components"
 	"github.com/g45t345rt/g45w/containers/notification_modals"
 	"github.com/g45t345rt/g45w/lang"
 	"github.com/g45t345rt/g45w/node_manager"
 	"github.com/g45t345rt/g45w/router"
-	"github.com/g45t345rt/g45w/ui/animation"
-	"github.com/g45t345rt/g45w/ui/components"
+	"github.com/g45t345rt/g45w/settings"
 	"github.com/tanema/gween"
 	"github.com/tanema/gween/ease"
 	"golang.org/x/exp/shiny/materialdesign/icons"
@@ -33,12 +35,11 @@ type PageEditNodeForm struct {
 	animationEnter *animation.Animation
 	animationLeave *animation.Animation
 
-	buttonEditNode   *components.Button
-	buttonDeleteNode *components.Button
-	txtEndpoint      *components.TextField
-	txtName          *components.TextField
-	nodeConn         node_manager.NodeConnection
-	submitting       bool
+	buttonEdit   *components.Button
+	buttonDelete *components.Button
+	txtEndpoint  *components.TextField
+	txtName      *components.TextField
+	nodeConn     app_data.NodeConnection
 
 	confirmDelete *components.Confirm
 
@@ -60,7 +61,8 @@ func NewPageEditNodeForm() *PageEditNodeForm {
 	list.Axis = layout.Vertical
 
 	saveIcon, _ := widget.NewIcon(icons.ContentSave)
-	buttonEditNode := components.NewButton(components.ButtonStyle{
+	loadingIcon, _ := widget.NewIcon(icons.NavigationRefresh)
+	buttonEdit := components.NewButton(components.ButtonStyle{
 		Rounded:         components.UniformRounded(unit.Dp(5)),
 		Icon:            saveIcon,
 		TextColor:       color.NRGBA{R: 255, G: 255, B: 255, A: 255},
@@ -69,15 +71,16 @@ func NewPageEditNodeForm() *PageEditNodeForm {
 		IconGap:         unit.Dp(10),
 		Inset:           layout.UniformInset(unit.Dp(10)),
 		Animation:       components.NewButtonAnimationDefault(),
+		LoadingIcon:     loadingIcon,
 	})
-	buttonEditNode.Label.Alignment = text.Middle
-	buttonEditNode.Style.Font.Weight = font.Bold
+	buttonEdit.Label.Alignment = text.Middle
+	buttonEdit.Style.Font.Weight = font.Bold
 
 	txtName := components.NewTextField()
 	txtEndpoint := components.NewTextField()
 
 	deleteIcon, _ := widget.NewIcon(icons.ActionDelete)
-	buttonDeleteNode := components.NewButton(components.ButtonStyle{
+	buttonDelete := components.NewButton(components.ButtonStyle{
 		Rounded:         components.UniformRounded(unit.Dp(5)),
 		Icon:            deleteIcon,
 		TextColor:       color.NRGBA{R: 255, G: 255, B: 255, A: 255},
@@ -87,8 +90,8 @@ func NewPageEditNodeForm() *PageEditNodeForm {
 		Inset:           layout.UniformInset(unit.Dp(10)),
 		Animation:       components.NewButtonAnimationDefault(),
 	})
-	buttonDeleteNode.Label.Alignment = text.Middle
-	buttonDeleteNode.Style.Font.Weight = font.Bold
+	buttonDelete.Label.Alignment = text.Middle
+	buttonDelete.Style.Font.Weight = font.Bold
 
 	confirmDelete := components.NewConfirm(layout.Center)
 	app_instance.Router.AddLayout(router.KeyLayout{
@@ -105,10 +108,10 @@ func NewPageEditNodeForm() *PageEditNodeForm {
 		animationEnter: animationEnter,
 		animationLeave: animationLeave,
 
-		buttonEditNode:   buttonEditNode,
-		buttonDeleteNode: buttonDeleteNode,
-		txtName:          txtName,
-		txtEndpoint:      txtEndpoint,
+		buttonEdit:   buttonEdit,
+		buttonDelete: buttonDelete,
+		txtName:      txtName,
+		txtEndpoint:  txtEndpoint,
 
 		confirmDelete: confirmDelete,
 
@@ -159,20 +162,21 @@ func (p *PageEditNodeForm) Layout(gtx layout.Context, th *material.Theme) layout
 		}
 	}
 
-	if p.buttonEditNode.Clickable.Clicked() {
+	if p.buttonEdit.Clicked() {
 		p.submitForm(gtx)
 	}
 
-	if p.buttonDeleteNode.Clickable.Clicked() {
+	if p.buttonDelete.Clicked() {
 		p.confirmDelete.SetVisible(true)
 	}
 
 	if p.confirmDelete.ClickedYes() {
-		err := node_manager.DelNode(p.nodeConn.ID)
+		err := p.removeNode()
 		if err != nil {
 			notification_modals.ErrorInstance.SetText(lang.Translate("Error"), err.Error())
 			notification_modals.ErrorInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
 		} else {
+
 			notification_modals.SuccessInstance.SetText(lang.Translate("Success"), lang.Translate("Node deleted"))
 			notification_modals.SuccessInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
 			page_instance.header.GoBack()
@@ -187,8 +191,8 @@ func (p *PageEditNodeForm) Layout(gtx layout.Context, th *material.Theme) layout
 			return p.txtEndpoint.Layout(gtx, th, lang.Translate("Endpoint"), "wss://node.deronfts.com/ws")
 		},
 		func(gtx layout.Context) layout.Dimensions {
-			p.buttonEditNode.Text = lang.Translate("SAVE")
-			return p.buttonEditNode.Layout(gtx, th)
+			p.buttonEdit.Text = lang.Translate("SAVE")
+			return p.buttonEdit.Layout(gtx, th)
 		},
 		func(gtx layout.Context) layout.Dimensions {
 			max := image.Pt(gtx.Dp(unit.Dp(gtx.Constraints.Max.X)), 5)
@@ -199,8 +203,8 @@ func (p *PageEditNodeForm) Layout(gtx layout.Context, th *material.Theme) layout
 			return layout.Dimensions{Size: max}
 		},
 		func(gtx layout.Context) layout.Dimensions {
-			p.buttonDeleteNode.Text = lang.Translate("DELETE NODE")
-			return p.buttonDeleteNode.Layout(gtx, th)
+			p.buttonDelete.Text = lang.Translate("DELETE NODE")
+			return p.buttonDelete.Layout(gtx, th)
 		},
 	}
 
@@ -223,53 +227,68 @@ func (p *PageEditNodeForm) Layout(gtx layout.Context, th *material.Theme) layout
 	})
 }
 
-func (p *PageEditNodeForm) submitForm(gtx layout.Context) {
-	if p.submitting {
-		return
+func (p *PageEditNodeForm) removeNode() error {
+	err := app_data.DelNodeConnection(p.nodeConn.ID)
+	if err != nil {
+		return err
 	}
 
-	p.submitting = true
+	if node_manager.CurrentNode != nil {
+		if node_manager.CurrentNode.Endpoint == p.nodeConn.Endpoint {
+			node_manager.CurrentNode = nil
+			walletapi.Connected = false
 
+			settings.App.NodeEndpoint = ""
+			err := settings.Save()
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (p *PageEditNodeForm) submitForm(gtx layout.Context) {
+	p.buttonEdit.SetLoading(true)
 	go func() {
 		setError := func(err error) {
-			p.submitting = false
+			p.buttonEdit.SetLoading(false)
 			notification_modals.ErrorInstance.SetText("Error", err.Error())
 			notification_modals.ErrorInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
 		}
 
 		txtName := p.txtName.Editor()
-		txtEnpoint := p.txtEndpoint.Editor()
+		txtEndpoint := p.txtEndpoint.Editor()
 
 		if txtName.Text() == "" {
 			setError(fmt.Errorf("enter name"))
 			return
 		}
 
-		if txtEnpoint.Text() == "" {
+		if txtEndpoint.Text() == "" {
 			setError(fmt.Errorf("enter endpoint"))
 			return
 		}
 
-		_, err := walletapi.TestConnect(txtEnpoint.Text())
+		_, err := walletapi.TestConnect(txtEndpoint.Text())
 		if err != nil {
 			setError(err)
 			return
 		}
 
-		err = node_manager.EditNode(node_manager.NodeConnection{
-			ID:       p.nodeConn.ID,
+		err = app_data.UpdateNodeConnection(app_data.NodeConnection{
 			Name:     txtName.Text(),
-			Endpoint: txtEnpoint.Text(),
+			Endpoint: txtEndpoint.Text(),
 		})
 		if err != nil {
 			setError(err)
 			return
 		}
 
-		p.submitting = false
+		p.buttonEdit.SetLoading(false)
 		notification_modals.SuccessInstance.SetText("Success", lang.Translate("Data saved"))
 		notification_modals.SuccessInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
 		page_instance.header.GoBack()
 	}()
-
 }

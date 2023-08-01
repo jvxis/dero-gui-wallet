@@ -3,7 +3,6 @@ package page_node
 import (
 	"image"
 	"image/color"
-	"sort"
 
 	"gioui.org/font"
 	"gioui.org/io/pointer"
@@ -15,14 +14,15 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
+	"github.com/g45t345rt/g45w/animation"
+	"github.com/g45t345rt/g45w/app_data"
 	"github.com/g45t345rt/g45w/app_instance"
+	"github.com/g45t345rt/g45w/components"
 	"github.com/g45t345rt/g45w/containers/notification_modals"
 	"github.com/g45t345rt/g45w/lang"
 	"github.com/g45t345rt/g45w/node_manager"
 	"github.com/g45t345rt/g45w/prefabs"
 	"github.com/g45t345rt/g45w/router"
-	"github.com/g45t345rt/g45w/ui/animation"
-	"github.com/g45t345rt/g45w/ui/components"
 	"github.com/tanema/gween"
 	"github.com/tanema/gween/ease"
 	"golang.org/x/exp/shiny/materialdesign/icons"
@@ -52,11 +52,10 @@ func NewPageSelectNode() *PageSelectNode {
 		gween.New(0, -1, .5, ease.OutCubic),
 	))
 
-	th := app_instance.Theme
 	list := new(widget.List)
 	list.Axis = layout.Vertical
 
-	nodeList := NewNodeList(th, lang.Translate("You didn't add any remote nodes yet."))
+	nodeList := NewNodeList()
 
 	nodeIcon, _ := widget.NewIcon(icons.ActionDNS)
 	buttonSetIntegratedNode := components.NewButton(components.ButtonStyle{
@@ -131,19 +130,22 @@ func (p *PageSelectNode) Leave() {
 	}
 }
 
-func (p *PageSelectNode) LoadRemoteNodes() {
+func (p *PageSelectNode) LoadRemoteNodes() error {
 	items := make([]NodeListItem, 0)
-	for _, nodeInfo := range node_manager.Nodes {
+
+	nodeConnections, err := app_data.GetNodeConnections()
+	if err != nil {
+		return err
+	}
+
+	for _, nodeConn := range nodeConnections {
 		items = append(items,
-			NewNodeListItem(nodeInfo),
+			NewNodeListItem(nodeConn),
 		)
 	}
 
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].conn.ID < items[j].conn.ID
-	})
-
 	p.nodeList.items = items
+	return nil
 }
 
 func (p *PageSelectNode) Layout(gtx layout.Context, th *material.Theme) layout.Dimensions {
@@ -166,7 +168,7 @@ func (p *PageSelectNode) Layout(gtx layout.Context, th *material.Theme) layout.D
 		}
 	}
 
-	if p.buttonAddNode.Clickable.Clicked() {
+	if p.buttonAddNode.Clicked() {
 		page_instance.pageRouter.SetCurrent(PAGE_ADD_NODE_FORM)
 		page_instance.header.AddHistory(PAGE_ADD_NODE_FORM)
 	}
@@ -204,7 +206,7 @@ func (p *PageSelectNode) Layout(gtx layout.Context, th *material.Theme) layout.D
 				}),
 				layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return p.nodeList.Layout(gtx, th)
+					return p.nodeList.Layout(gtx, th, lang.Translate("You don't have any remote nodes available."))
 				}),
 			)
 		},
@@ -221,20 +223,29 @@ func (p *PageSelectNode) Layout(gtx layout.Context, th *material.Theme) layout.D
 	}
 
 	if p.buttonResetNodeList.Clicked() {
-		err := node_manager.ReloadTrustedNodes()
+		err := app_data.StoreTrustedNodeConnections()
 		if err != nil {
 			notification_modals.ErrorInstance.SetText("Error", err.Error())
 			notification_modals.ErrorInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
 		} else {
 			p.LoadRemoteNodes()
+			node_manager.CurrentNode = nil // deselect node
 			notification_modals.SuccessInstance.SetText("Success", lang.Translate("List reset to default."))
 			notification_modals.SuccessInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
 		}
 	}
 
-	if p.buttonSetIntegratedNode.Clickable.Clicked() {
-		node_manager.ConnectNode(node_manager.INTEGRATED_NODE_ID, true)
-		page_instance.pageRouter.SetCurrent(PAGE_INTEGRATED_NODE)
+	if p.buttonSetIntegratedNode.Clicked() {
+		err := node_manager.Connect(app_data.INTEGRATED_NODE_CONNECTION, true)
+		if err != nil {
+			notification_modals.ErrorInstance.SetText(lang.Translate("Error"), err.Error())
+			notification_modals.ErrorInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
+		} else {
+			page_instance.pageRouter.SetCurrent(PAGE_INTEGRATED_NODE)
+			page_instance.header.AddHistory(PAGE_INTEGRATED_NODE)
+			notification_modals.SuccessInstance.SetText(lang.Translate("Success"), lang.Translate("Integrated node selected"))
+			notification_modals.SuccessInstance.SetVisible(true, 0)
+		}
 	}
 
 	for _, item := range p.nodeList.items {
@@ -245,7 +256,7 @@ func (p *PageSelectNode) Layout(gtx layout.Context, th *material.Theme) layout.D
 		}
 
 		if item.listItemSelect.SelectClicked() {
-			p.connect(gtx, item.conn)
+			p.connect(item.conn)
 		}
 	}
 
@@ -260,64 +271,63 @@ func (p *PageSelectNode) Layout(gtx layout.Context, th *material.Theme) layout.D
 	})
 }
 
-func (p *PageSelectNode) connect(gtx layout.Context, conn node_manager.NodeConnection) {
+func (p *PageSelectNode) connect(nodeConn app_data.NodeConnection) {
 	if p.connecting {
 		return
 	}
 
 	p.connecting = true
 	go func() {
-		notification_modals.InfoInstance.SetText("Connecting...", conn.Endpoint)
+		notification_modals.InfoInstance.SetText(lang.Translate("Connecting..."), nodeConn.Endpoint)
 		notification_modals.InfoInstance.SetVisible(true, 0)
-		err := node_manager.ConnectNode(conn.ID, true)
+		err := node_manager.Connect(nodeConn, true)
 		p.connecting = false
 		notification_modals.InfoInstance.SetVisible(false, 0)
 
 		if err != nil {
 			notification_modals.InfoInstance.SetVisible(false, 0)
-			notification_modals.ErrorInstance.SetText("Error", err.Error())
+			notification_modals.ErrorInstance.SetText(lang.Translate("Error"), err.Error())
 			notification_modals.ErrorInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
 		} else {
 			page_instance.pageRouter.SetCurrent(PAGE_REMOTE_NODE)
 			page_instance.header.AddHistory(PAGE_REMOTE_NODE)
 			app_instance.Window.Invalidate()
+			notification_modals.SuccessInstance.SetText(lang.Translate("Success"), lang.Translate("Remote node connected."))
+			notification_modals.SuccessInstance.SetVisible(true, 0)
 		}
 	}()
 }
 
 type NodeList struct {
-	emptyText string
-	items     []NodeListItem
-	listStyle material.ListStyle
+	items []NodeListItem
+	list  *widget.List
 }
 
-func NewNodeList(th *material.Theme, emptyText string) *NodeList {
+func NewNodeList() *NodeList {
 	list := new(widget.List)
 	list.Axis = layout.Vertical
 
-	listStyle := material.List(th, list)
-	listStyle.AnchorStrategy = material.Overlay
-	listStyle.Indicator.MinorWidth = unit.Dp(10)
-	listStyle.Indicator.CornerRadius = unit.Dp(5)
-	black := color.NRGBA{R: 0, G: 0, B: 0, A: 255}
-	listStyle.Indicator.Color = black
-	//listStyle.Indicator.HoverColor = f32color.Hovered(black)
-
 	return &NodeList{
-		listStyle: listStyle,
-		emptyText: emptyText,
-		items:     make([]NodeListItem, 0),
+		list:  list,
+		items: make([]NodeListItem, 0),
 	}
 }
 
-func (l *NodeList) Layout(gtx layout.Context, th *material.Theme) layout.Dimensions {
+func (l *NodeList) Layout(gtx layout.Context, th *material.Theme, emptyText string) layout.Dimensions {
 	r := op.Record(gtx.Ops)
 	dims := layout.UniformInset(unit.Dp(10)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		if len(l.items) == 0 {
-			lbl := material.Label(th, unit.Sp(14), l.emptyText)
+			lbl := material.Label(th, unit.Sp(16), emptyText)
 			return lbl.Layout(gtx)
 		} else {
-			return l.listStyle.Layout(gtx, len(l.items), func(gtx layout.Context, i int) layout.Dimensions {
+			listStyle := material.List(th, l.list)
+			listStyle.AnchorStrategy = material.Overlay
+			listStyle.Indicator.MinorWidth = unit.Dp(10)
+			listStyle.Indicator.CornerRadius = unit.Dp(5)
+			black := color.NRGBA{R: 0, G: 0, B: 0, A: 255}
+			listStyle.Indicator.Color = black
+
+			return listStyle.Layout(gtx, len(l.items), func(gtx layout.Context, i int) layout.Dimensions {
 				return l.items[i].Layout(gtx, th)
 			})
 		}
@@ -336,14 +346,14 @@ func (l *NodeList) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 }
 
 type NodeListItem struct {
-	conn           node_manager.NodeConnection
+	conn           app_data.NodeConnection
 	clickable      *widget.Clickable
 	listItemSelect *prefabs.ListItemSelectEdit
 
 	rounded unit.Dp
 }
 
-func NewNodeListItem(conn node_manager.NodeConnection) NodeListItem {
+func NewNodeListItem(conn app_data.NodeConnection) NodeListItem {
 	return NodeListItem{
 		conn:           conn,
 		clickable:      &widget.Clickable{},

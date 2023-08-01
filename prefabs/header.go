@@ -8,14 +8,14 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
+	"github.com/g45t345rt/g45w/components"
 	"github.com/g45t345rt/g45w/router"
-	"github.com/g45t345rt/g45w/ui/components"
 	"golang.org/x/exp/shiny/materialdesign/icons"
 )
 
 type Header struct {
-	LabelTitle  material.LabelStyle
-	Subtitle    layout.Widget
+	title       string
+	Subtitle    func(gtx layout.Context, th *material.Theme) layout.Dimensions
 	ButtonRight *components.Button
 
 	buttonGoBack *components.Button
@@ -23,7 +23,9 @@ type Header struct {
 	history      []interface{}
 }
 
-func NewHeader(labelTitle material.LabelStyle, r *router.Router) *Header {
+type HeaderTitleLayoutFunc func(gtx layout.Context, th *material.Theme, title string) layout.Dimensions
+
+func NewHeader(r *router.Router) *Header {
 	textColor := color.NRGBA{R: 0, G: 0, B: 0, A: 100}
 	textHoverColor := color.NRGBA{R: 0, G: 0, B: 0, A: 255}
 
@@ -35,7 +37,6 @@ func NewHeader(labelTitle material.LabelStyle, r *router.Router) *Header {
 	})
 
 	header := &Header{
-		LabelTitle:   labelTitle,
 		buttonGoBack: buttonGoBack,
 		router:       r,
 		history:      make([]interface{}, 0),
@@ -45,7 +46,7 @@ func NewHeader(labelTitle material.LabelStyle, r *router.Router) *Header {
 }
 
 func (h *Header) SetTitle(title string) {
-	h.LabelTitle.Text = title
+	h.title = title
 }
 
 func (h *Header) History() []interface{} {
@@ -99,10 +100,10 @@ func (h *Header) handleKeyBack(gtx layout.Context) {
 	}
 }
 
-func (h *Header) Layout(gtx layout.Context, th *material.Theme) layout.Dimensions {
+func (h *Header) Layout(gtx layout.Context, th *material.Theme, titleLayout HeaderTitleLayoutFunc) layout.Dimensions {
 	h.handleKeyBack(gtx)
 
-	if h.buttonGoBack.Clickable.Clicked() {
+	if h.buttonGoBack.Clicked() {
 		h.GoBack()
 	}
 
@@ -130,17 +131,19 @@ func (h *Header) Layout(gtx layout.Context, th *material.Theme) layout.Dimension
 			return layout.Dimensions{}
 		}),
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return h.LabelTitle.Layout(gtx)
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					if h.Subtitle != nil {
-						return h.Subtitle(gtx)
-					}
-					return layout.Dimensions{}
-				}),
-			)
+			var childs []layout.FlexChild
+
+			childs = append(childs, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return titleLayout(gtx, th, h.title)
+			}))
+
+			if h.Subtitle != nil {
+				childs = append(childs, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return h.Subtitle(gtx, th)
+				}))
+			}
+
+			return layout.Flex{Axis: layout.Vertical}.Layout(gtx, childs...)
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if h.ButtonRight != nil {

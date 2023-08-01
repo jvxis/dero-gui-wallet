@@ -12,12 +12,12 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
+	"github.com/g45t345rt/g45w/animation"
 	"github.com/g45t345rt/g45w/app_instance"
+	"github.com/g45t345rt/g45w/components"
 	"github.com/g45t345rt/g45w/containers/notification_modals"
 	"github.com/g45t345rt/g45w/lang"
 	"github.com/g45t345rt/g45w/router"
-	"github.com/g45t345rt/g45w/ui/animation"
-	"github.com/g45t345rt/g45w/ui/components"
 	"github.com/g45t345rt/g45w/wallet_manager"
 	"github.com/tanema/gween"
 	"github.com/tanema/gween/ease"
@@ -135,7 +135,7 @@ func (p *PageCreateWalletDiskForm) Layout(gtx layout.Context, th *material.Theme
 		}
 	}
 
-	if p.buttonLoad.Clickable.Clicked() {
+	if p.buttonLoad.Clicked() {
 		go func() {
 			read, err := app_instance.Explorer.ChooseFile()
 			if err != nil {
@@ -152,7 +152,7 @@ func (p *PageCreateWalletDiskForm) Layout(gtx layout.Context, th *material.Theme
 		}()
 	}
 
-	if p.buttonCreate.Clickable.Clicked() {
+	if p.buttonCreate.Clicked() {
 		err := p.submitForm()
 		if err != nil {
 			notification_modals.ErrorInstance.SetText(lang.Translate("Error"), err.Error())

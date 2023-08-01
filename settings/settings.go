@@ -12,15 +12,18 @@ type AppSettings struct {
 	Language     string `json:"language"`
 	HideBalance  bool   `json:"hide_balance"`
 	SendRingSize int    `json:"send_ring_size"`
+	NodeEndpoint string `json:"node_endpoint"`
+	TabBarsKey   string `json:"tab_bars_key"`
 }
 
 var (
-	AppDir     string
-	NodeDir    string
-	WalletsDir string
+	AppDir            string
+	IntegratedNodeDir string
+	WalletsDir        string
 )
 
 var App AppSettings
+var Name = "G45W"
 
 // vars below are replaced by -ldflags during build
 var Version = "development"
@@ -34,28 +37,50 @@ func Load() error {
 	}
 
 	appDir := filepath.Join(dataDir, "g45w")
-	nodeDir := filepath.Join(appDir, "node")
+	_, err = os.Stat(appDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err = os.Mkdir(appDir, os.ModePerm)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+
+	integratedNodeDir := filepath.Join(appDir, "node")
 	walletsDir := filepath.Join(appDir, "wallets")
 
 	AppDir = appDir
-	NodeDir = nodeDir
+	IntegratedNodeDir = integratedNodeDir
 	WalletsDir = walletsDir
 
-	path := filepath.Join(AppDir, "settings.json")
+	settingsPath := filepath.Join(AppDir, "settings.json")
 
-	_, err = os.Stat(path)
+	// settings with default values
+	appSettings := AppSettings{
+		Language:     "en",
+		HideBalance:  false,
+		SendRingSize: 16,
+		NodeEndpoint: "",
+		TabBarsKey:   "tokens",
+	}
+
+	_, err = os.Stat(settingsPath)
 	if err == nil {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(settingsPath)
 		if err != nil {
 			return err
 		}
 
-		err = json.Unmarshal(data, &App)
+		err = json.Unmarshal(data, &appSettings)
 		if err != nil {
 			return err
 		}
 	}
 
+	App = appSettings
 	return nil
 }
 

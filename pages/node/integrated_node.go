@@ -9,10 +9,10 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 	"gioui.org/widget/material"
+	"github.com/g45t345rt/g45w/animation"
 	"github.com/g45t345rt/g45w/integrated_node"
 	"github.com/g45t345rt/g45w/lang"
 	"github.com/g45t345rt/g45w/router"
-	"github.com/g45t345rt/g45w/ui/animation"
 	"github.com/g45t345rt/g45w/utils"
 	"github.com/tanema/gween"
 	"github.com/tanema/gween/ease"
@@ -53,8 +53,11 @@ func (p *PageIntegratedNode) IsActive() bool {
 func (p *PageIntegratedNode) Enter() {
 	p.isActive = true
 	page_instance.header.SetTitle(lang.Translate("Integrated Node"))
-	p.animationLeave.Reset()
-	p.animationEnter.Start()
+
+	if !page_instance.header.IsHistory(PAGE_INTEGRATED_NODE) {
+		p.animationLeave.Reset()
+		p.animationEnter.Start()
+	}
 }
 
 func (p *PageIntegratedNode) Leave() {

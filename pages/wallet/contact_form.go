@@ -16,13 +16,13 @@ import (
 	"gioui.org/widget"
 	"gioui.org/widget/material"
 	"github.com/deroproject/derohe/globals"
+	"github.com/g45t345rt/g45w/animation"
 	"github.com/g45t345rt/g45w/app_instance"
-	"github.com/g45t345rt/g45w/contact_manager"
+	"github.com/g45t345rt/g45w/components"
 	"github.com/g45t345rt/g45w/containers/notification_modals"
 	"github.com/g45t345rt/g45w/lang"
 	"github.com/g45t345rt/g45w/router"
-	"github.com/g45t345rt/g45w/ui/animation"
-	"github.com/g45t345rt/g45w/ui/components"
+	"github.com/g45t345rt/g45w/wallet_manager"
 	"github.com/tanema/gween"
 	"github.com/tanema/gween/ease"
 	"golang.org/x/exp/shiny/materialdesign/icons"
@@ -41,7 +41,7 @@ type PageContactForm struct {
 	txtNote       *components.TextField
 	confirmDelete *components.Confirm
 
-	contact *contact_manager.Contact
+	contact *wallet_manager.Contact
 
 	list *widget.List
 }
@@ -171,7 +171,7 @@ func (p *PageContactForm) Layout(gtx layout.Context, th *material.Theme) layout.
 		}
 	}
 
-	if p.buttonSave.Clickable.Clicked() {
+	if p.buttonSave.Clicked() {
 		err := p.submitForm()
 		if err != nil {
 			notification_modals.ErrorInstance.SetText(lang.Translate("Error"), err.Error())
@@ -179,23 +179,26 @@ func (p *PageContactForm) Layout(gtx layout.Context, th *material.Theme) layout.
 		} else {
 			notification_modals.SuccessInstance.SetText(lang.Translate("Success"), lang.Translate("New contact added"))
 			notification_modals.SuccessInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
+			page_instance.pageContacts.Load()
 			page_instance.header.GoBack()
 			p.ClearForm()
 		}
 	}
 
-	if p.buttonDelete.Clickable.Clicked() {
+	if p.buttonDelete.Clicked() {
 		p.confirmDelete.SetVisible(true)
 	}
 
 	if p.confirmDelete.ClickedYes() {
-		err := page_instance.contactManager.DelContact(p.contact.Addr)
+		wallet := wallet_manager.OpenedWallet
+		err := wallet.DelContact(p.contact.Addr)
 		if err != nil {
 			notification_modals.ErrorInstance.SetText(lang.Translate("Error"), err.Error())
 			notification_modals.ErrorInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
 		} else {
 			notification_modals.SuccessInstance.SetText(lang.Translate("Success"), lang.Translate("Contact deleted"))
 			notification_modals.SuccessInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
+			page_instance.pageContacts.Load()
 			page_instance.header.GoBack()
 			p.ClearForm()
 		}
@@ -279,7 +282,9 @@ func (p *PageContactForm) submitForm() error {
 		return errors.New("invalid address")
 	}
 
-	err = page_instance.contactManager.SetContact(contact_manager.Contact{
+	wallet := wallet_manager.OpenedWallet
+
+	err = wallet.StoreContact(wallet_manager.Contact{
 		Name:      txtName.Text(),
 		Addr:      txtAddr.Text(),
 		Note:      txtNote.Text(),

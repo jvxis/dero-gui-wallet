@@ -23,8 +23,8 @@ import (
 
 type NodeStatusBar struct {
 	clickable            *widget.Clickable
-	integratedNodeStatus *integrated_node.NodeStatus
-	remoteNodeInfo       *page_node.RemoteNodeInfo
+	IntegratedNodeStatus *integrated_node.NodeStatus
+	RemoteNodeInfo       *page_node.RemoteNodeInfo
 }
 
 var Instance *NodeStatusBar
@@ -32,11 +32,22 @@ var Instance *NodeStatusBar
 func LoadInstance() *NodeStatusBar {
 	nodeStatusBar := &NodeStatusBar{
 		clickable:            new(widget.Clickable),
-		integratedNodeStatus: integrated_node.NewNodeStatus(1 * time.Second),
-		remoteNodeInfo:       page_node.NewRemoteNodeInfo(3 * time.Second),
+		IntegratedNodeStatus: integrated_node.NewNodeStatus(1 * time.Second),
+		RemoteNodeInfo:       page_node.NewRemoteNodeInfo(3 * time.Second),
 	}
 	Instance = nodeStatusBar
 	return nodeStatusBar
+}
+
+func (n *NodeStatusBar) Update() {
+	currentNode := node_manager.CurrentNode
+	if currentNode != nil {
+		if currentNode.Integrated {
+			n.IntegratedNodeStatus.Update()
+		} else {
+			n.RemoteNodeInfo.Update()
+		}
+	}
 }
 
 func (n *NodeStatusBar) Layout(gtx layout.Context, th *material.Theme) layout.Dimensions {
@@ -56,15 +67,15 @@ func (n *NodeStatusBar) Layout(gtx layout.Context, th *material.Theme) layout.Di
 	status := "unassigned node"
 	statusDotColor := color.NRGBA{R: 255, G: 0, B: 0, A: 255}
 
-	if currentNode != "" {
-		if currentNode == node_manager.INTEGRATED_NODE_ID {
-			n.integratedNodeStatus.Active()
+	if currentNode != nil {
+		if currentNode.Integrated {
+			n.IntegratedNodeStatus.Active()
 
 			//height := n.integratedNodeStatus.Height
 			//bestHeight := n.integratedNodeStatus.BestHeight
 			walletHeight := wallet.Memory.Get_Height()
 			daemonHeight := wallet.Memory.Get_Daemon_Height()
-			out := n.integratedNodeStatus.PeerOutCount
+			out := n.IntegratedNodeStatus.PeerOutCount
 
 			if walletHeight < daemonHeight {
 				statusDotColor = color.NRGBA{R: 255, G: 255, B: 0, A: 255}
@@ -72,22 +83,24 @@ func (n *NodeStatusBar) Layout(gtx layout.Context, th *material.Theme) layout.Di
 				statusDotColor = color.NRGBA{R: 0, G: 255, B: 0, A: 255}
 			}
 
-			status = fmt.Sprintf("%d / %d - %dP (%s)", walletHeight, daemonHeight, out, lang.Translate("Integrated"))
+			status = fmt.Sprintf("%d / %d - %dP (%s)", walletHeight, daemonHeight, out, lang.Translate("Integrated Node"))
 		} else {
-			n.remoteNodeInfo.Active()
-
-			nodeConn := node_manager.Nodes[currentNode]
+			n.RemoteNodeInfo.Active()
 			walletHeight := wallet.Memory.Get_Height()
 			daemonHeight := wallet.Memory.Get_Daemon_Height()
-			out := n.remoteNodeInfo.Result.Outgoing_connections_count
+			out := n.RemoteNodeInfo.Result.Outgoing_connections_count
 
-			if walletHeight < daemonHeight {
-				statusDotColor = color.NRGBA{R: 255, G: 255, B: 0, A: 255}
+			if n.RemoteNodeInfo.Err == nil {
+				if walletHeight < daemonHeight {
+					statusDotColor = color.NRGBA{R: 255, G: 255, B: 0, A: 255}
+				} else {
+					statusDotColor = color.NRGBA{R: 0, G: 255, B: 0, A: 255}
+				}
+
+				status = fmt.Sprintf("%d / %d - %dP (%s)", walletHeight, daemonHeight, out, currentNode.Name)
 			} else {
-				statusDotColor = color.NRGBA{R: 0, G: 255, B: 0, A: 255}
+				status = fmt.Sprintf("%s (%s)", lang.Translate("Connection error"), currentNode.Name)
 			}
-
-			status = fmt.Sprintf("%d / %d - %dP (%s)", walletHeight, daemonHeight, out, nodeConn.Name)
 		}
 	}
 
