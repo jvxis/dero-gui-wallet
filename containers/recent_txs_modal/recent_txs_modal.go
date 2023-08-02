@@ -2,11 +2,16 @@ package recent_txs_modal
 
 import (
 	"fmt"
+	"image"
 	"image/color"
+	"strings"
 	"time"
 
 	"gioui.org/font"
 	"gioui.org/layout"
+	"gioui.org/op"
+	"gioui.org/op/clip"
+	"gioui.org/op/paint"
 	"gioui.org/text"
 	"gioui.org/unit"
 	"gioui.org/widget"
@@ -14,6 +19,7 @@ import (
 	"github.com/deroproject/derohe/walletapi"
 	"github.com/g45t345rt/g45w/app_instance"
 	"github.com/g45t345rt/g45w/components"
+	"github.com/g45t345rt/g45w/containers/notification_modals"
 	"github.com/g45t345rt/g45w/lang"
 	"github.com/g45t345rt/g45w/router"
 	"github.com/g45t345rt/g45w/utils"
@@ -23,8 +29,10 @@ import (
 )
 
 type RecentTxsModal struct {
-	modal *components.Modal
-	list  *widget.List
+	modal        *components.Modal
+	list         *widget.List
+	buttonClear  *components.Button
+	confirmClear *components.Confirm
 
 	txItems []TxItem
 }
@@ -44,19 +52,38 @@ func LoadInstance() {
 		Backdrop:  components.NewModalBackground(),
 	})
 
+	confirmClear := components.NewConfirm(layout.Center)
+
 	list := new(widget.List)
 	list.Axis = layout.Vertical
 
+	deleteIcon, _ := widget.NewIcon(icons.ContentDeleteSweep)
+	buttonClear := components.NewButton(components.ButtonStyle{
+		Icon:           deleteIcon,
+		TextColor:      color.NRGBA{R: 0, G: 0, B: 0, A: 100},
+		HoverTextColor: &color.NRGBA{R: 0, G: 0, B: 0, A: 255},
+		Animation:      components.NewButtonAnimationScale(.95),
+	})
+
 	Instance = &RecentTxsModal{
-		modal: modal,
-		list:  list,
+		modal:        modal,
+		list:         list,
+		buttonClear:  buttonClear,
+		confirmClear: confirmClear,
 	}
 
 	Instance.startCheckingPendingTxs()
 
 	app_instance.Router.AddLayout(router.KeyLayout{
 		DrawIndex: 2,
-		Layout:    Instance.layout,
+		Layout: func(gtx layout.Context, th *material.Theme) {
+			Instance.layout(gtx, th)
+
+			confirmClear.Prompt = lang.Translate("Are you sure you want to clear outgoing txs?")
+			confirmClear.NoText = lang.Translate("NO")
+			confirmClear.YesText = lang.Translate("YES")
+			confirmClear.Layout(gtx, th)
+		},
 	})
 }
 
@@ -114,6 +141,25 @@ func (r *RecentTxsModal) SetVisible(visible bool) {
 }
 
 func (r *RecentTxsModal) layout(gtx layout.Context, th *material.Theme) {
+	if r.buttonClear.Clicked() {
+		r.confirmClear.SetVisible(true)
+	}
+
+	wallet := wallet_manager.OpenedWallet
+	if r.confirmClear.ClickedYes() {
+		err := wallet.ClearOutgoingTxs()
+		if err != nil {
+			notification_modals.ErrorInstance.SetText(lang.Translate("Error"), err.Error())
+			notification_modals.ErrorInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
+		} else {
+			notification_modals.SuccessInstance.SetText(lang.Translate("Success"), lang.Translate("Outgoing txs cleared."))
+			notification_modals.SuccessInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
+			r.LoadOutgoingTxs()
+		}
+	}
+
+	r.buttonClear.Disabled = wallet == nil
+
 	r.modal.Layout(gtx, nil, func(gtx layout.Context) layout.Dimensions {
 		return layout.Inset{
 			Top: unit.Dp(15), Bottom: unit.Dp(15),
@@ -121,14 +167,22 @@ func (r *RecentTxsModal) layout(gtx layout.Context, th *material.Theme) {
 		}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					lbl := material.Label(th, unit.Sp(20), fmt.Sprintf("%s (%d)", lang.Translate("Outgoing Transactions"), len(r.txItems)))
-					lbl.Font.Weight = font.Bold
-					return lbl.Layout(gtx)
+					return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+							lbl := material.Label(th, unit.Sp(20), fmt.Sprintf("%s (%d)", lang.Translate("Outgoing Transactions"), len(r.txItems)))
+							lbl.Font.Weight = font.Bold
+							return lbl.Layout(gtx)
+						}),
+						layout.Rigid(layout.Spacer{Width: unit.Dp(10)}.Layout),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return r.buttonClear.Layout(gtx, th)
+						}),
+						layout.Rigid(layout.Spacer{Width: unit.Dp(15)}.Layout),
+					)
 				}),
 				layout.Rigid(layout.Spacer{Height: unit.Dp(15)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					gtx.Constraints.Max.Y = gtx.Dp(250)
-					wallet := wallet_manager.OpenedWallet
 					if wallet == nil {
 						lbl := material.Label(th, unit.Sp(16), lang.Translate("Wallet is not opened."))
 						return lbl.Layout(gtx)
@@ -144,7 +198,7 @@ func (r *RecentTxsModal) layout(gtx layout.Context, th *material.Theme) {
 						return listStyle.Layout(gtx, len(r.txItems), func(gtx layout.Context, index int) layout.Dimensions {
 							bottomInset := 0
 							if index < len(r.txItems)-1 {
-								bottomInset = 10
+								bottomInset = 5
 							}
 
 							return layout.Inset{
@@ -161,8 +215,9 @@ func (r *RecentTxsModal) layout(gtx layout.Context, th *material.Theme) {
 }
 
 type TxItem struct {
-	tx         wallet_manager.OutgoingTx
-	buttonOpen *components.Button
+	tx           wallet_manager.OutgoingTx
+	buttonOpen   *components.Button
+	buttonRemove *components.Button
 }
 
 func NewTxItem(tx wallet_manager.OutgoingTx) *TxItem {
@@ -176,9 +231,18 @@ func NewTxItem(tx wallet_manager.OutgoingTx) *TxItem {
 		HoverTextColor: &textHoverColor,
 	})
 
+	remoteIcon, _ := widget.NewIcon(icons.ActionDelete)
+	buttonRemove := components.NewButton(components.ButtonStyle{
+		Icon:           remoteIcon,
+		TextColor:      textColor,
+		HoverTextColor: &textHoverColor,
+		Animation:      components.NewButtonAnimationScale(.95),
+	})
+
 	return &TxItem{
-		tx:         tx,
-		buttonOpen: buttonOpen,
+		tx:           tx,
+		buttonOpen:   buttonOpen,
+		buttonRemove: buttonRemove,
 	}
 }
 
@@ -189,9 +253,17 @@ func (item *TxItem) Layout(gtx layout.Context, th *material.Theme) layout.Dimens
 
 	switch item.tx.Status.String {
 	case "valid":
-		status = lang.Translate("Successful transaction")
+
 		height := uint64(walletapi.Get_Daemon_Height())
-		confirmations = height - uint64(item.tx.BlockHeight.Int64)
+
+		if height > 0 {
+			confirmations = height - uint64(item.tx.BlockHeight.Int64)
+		} else {
+			confirmations = 0
+		}
+
+		value := lang.Translate("{} confirmations")
+		status = strings.Replace(value, "{}", fmt.Sprint(confirmations), -1)
 	case "invalid":
 		status = lang.Translate("Invalid transaction")
 	default:
@@ -204,15 +276,32 @@ func (item *TxItem) Layout(gtx layout.Context, th *material.Theme) layout.Dimens
 		go open.Run(fmt.Sprintf("https://explorer.dero.io/tx/%s", txId))
 	}
 
-	return layout.Flex{
-		Axis:      layout.Horizontal,
-		Spacing:   layout.SpaceBetween,
-		Alignment: layout.Middle,
-	}.Layout(gtx,
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+	if item.buttonRemove.Clicked() {
+		wallet := wallet_manager.OpenedWallet
+		err := wallet.DelOutgoingTx(item.tx.TxId)
+
+		if err != nil {
+			notification_modals.ErrorInstance.SetText(lang.Translate("Error"), err.Error())
+			notification_modals.ErrorInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
+		} else {
+			notification_modals.SuccessInstance.SetText(lang.Translate("Success"), lang.Translate("Transaction ref remove."))
+			notification_modals.SuccessInstance.SetVisible(true, notification_modals.CLOSE_AFTER_DEFAULT)
+			Instance.LoadOutgoingTxs()
+		}
+	}
+
+	r := op.Record(gtx.Ops)
+	dims := layout.Inset{
+		Top: unit.Dp(5), Bottom: unit.Dp(5),
+		Left: unit.Dp(5), Right: unit.Dp(5),
+	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		var flexChilds []layout.FlexChild
+
+		flexChilds = append(flexChilds, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					lbl := material.Label(th, unit.Sp(16), utils.ReduceTxId(txId))
+					lbl.Font.Weight = font.Bold
 					return lbl.Layout(gtx)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -220,25 +309,58 @@ func (item *TxItem) Layout(gtx layout.Context, th *material.Theme) layout.Dimens
 					return lbl.Layout(gtx)
 				}),
 			)
-		}),
-		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+		}))
+
+		flexChilds = append(flexChilds, layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					confirmations := fmt.Sprintf("%d confirmations", confirmations)
-					lbl := material.Label(th, unit.Sp(16), confirmations)
+					lbl := material.Label(th, unit.Sp(16), fmt.Sprint(item.tx.BlockHeight.Int64))
 					lbl.Alignment = text.End
 					return lbl.Layout(gtx)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					lbl := material.Label(th, unit.Sp(16), date.Format("2006-01-02"))
+					lbl := material.Label(th, unit.Sp(16), lang.TimeAgo(date))
 					lbl.Alignment = text.End
 					return lbl.Layout(gtx)
 				}),
 			)
-		}),
-		layout.Rigid(layout.Spacer{Width: unit.Dp(10)}.Layout),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return item.buttonOpen.Layout(gtx, th)
-		}),
+		}))
+
+		flexChilds = append(flexChilds,
+			layout.Rigid(layout.Spacer{Width: unit.Dp(10)}.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return item.buttonOpen.Layout(gtx, th)
+			}),
+		)
+
+		if confirmations > 1 {
+			flexChilds = append(flexChilds,
+				layout.Rigid(layout.Spacer{Width: unit.Dp(5)}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return item.buttonRemove.Layout(gtx, th)
+				}),
+			)
+		}
+
+		return layout.Flex{
+			Axis:      layout.Horizontal,
+			Spacing:   layout.SpaceBetween,
+			Alignment: layout.Middle,
+		}.Layout(gtx,
+			flexChilds...,
+		)
+	})
+	c := r.Stop()
+
+	paint.FillShape(gtx.Ops,
+		color.NRGBA{A: 10},
+		clip.RRect{
+			Rect: image.Rectangle{Max: dims.Size},
+			SE:   gtx.Dp(5), SW: gtx.Dp(5),
+			NW: gtx.Dp(5), NE: gtx.Dp(5),
+		}.Op(gtx.Ops),
 	)
+
+	c.Add(gtx.Ops)
+	return dims
 }

@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"gioui.org/font"
-	"gioui.org/io/key"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -70,10 +69,9 @@ func NewPageSendForm() *PageSendForm {
 	buttonBuildTx.Label.Alignment = text.Middle
 	buttonBuildTx.Style.Font.Weight = font.Bold
 
-	txtAmount := components.NewTextField()
+	txtAmount := components.NewNumberTextField()
 	txtAmount.Input.TextSize = unit.Sp(26)
 	txtAmount.Input.FontWeight = font.Bold
-	txtAmount.Editor().InputHint = key.HintNumeric
 
 	txtWalletAddr := components.NewInput()
 
@@ -270,28 +268,28 @@ func (p *PageSendForm) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 					addr := p.txtWalletAddr.Editor.Text()
 
 					wallet := wallet_manager.OpenedWallet
+					if wallet != nil {
+						contact, _ := wallet.GetContact(addr)
+						if contact != nil {
+							return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+								layout.Rigid(layout.Spacer{Height: unit.Dp(3)}.Layout),
+								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+									return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+										layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+											lbl := material.Label(th, unit.Sp(16), lang.Translate("Matching contact:"))
+											return lbl.Layout(gtx)
+										}),
+										layout.Rigid(layout.Spacer{Width: unit.Dp(3)}.Layout),
+										layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 
-					contact, _ := wallet.GetContact(addr)
-
-					if contact != nil {
-						return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-							layout.Rigid(layout.Spacer{Height: unit.Dp(3)}.Layout),
-							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
-									layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-										lbl := material.Label(th, unit.Sp(16), lang.Translate("Matching contact:"))
-										return lbl.Layout(gtx)
-									}),
-									layout.Rigid(layout.Spacer{Width: unit.Dp(3)}.Layout),
-									layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-
-										lbl := material.Label(th, unit.Sp(16), contact.Name)
-										lbl.Font.Weight = font.Bold
-										return lbl.Layout(gtx)
-									}),
-								)
-							}),
-						)
+											lbl := material.Label(th, unit.Sp(16), contact.Name)
+											lbl.Font.Weight = font.Bold
+											return lbl.Layout(gtx)
+										}),
+									)
+								}),
+							)
+						}
 					}
 
 					return layout.Dimensions{}

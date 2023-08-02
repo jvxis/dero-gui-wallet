@@ -479,7 +479,7 @@ func (p *PageBalanceTokens) Layout(gtx layout.Context, th *material.Theme) layou
 					Top: unit.Dp(0), Bottom: unit.Dp(20),
 					Left: unit.Dp(30), Right: unit.Dp(30),
 				}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					lbl := material.Label(th, unit.Sp(16), lang.Translate("You don't have any txs. Try adjusting filering options."))
+					lbl := material.Label(th, unit.Sp(16), lang.Translate("You don't have any txs. Try adjusting filering options or wait for wallet to sync."))
 					return lbl.Layout(gtx)
 				})
 			})
@@ -1076,7 +1076,9 @@ func (item *TxListItem) Layout(gtx layout.Context, th *material.Theme) layout.Di
 	}
 
 	if item.clickable.Clicked() {
-
+		page_instance.pageTransaction.entry = &item.entry
+		page_instance.pageRouter.SetCurrent(PAGE_TRANSACTION)
+		page_instance.header.AddHistory(PAGE_TRANSACTION)
 	}
 
 	m := op.Record(gtx.Ops)
