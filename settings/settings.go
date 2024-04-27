@@ -40,8 +40,8 @@ var (
 
 var App AppSettings
 
-var Name = "G45W"
-var DonationAddress = "dero1qyhunyuk24g9qsjtcr4r0c7rgjquuernqcfnx76kq0jvn4ns98tf2qgj5dq70"
+var Name = "deroW"
+var DonationAddress = "dero1qys28f7w548hcg36c5t6jwvrr7w7ce8c5h79lxue7xwsp7wyk05kqqqq32jf7"
 
 // vars below are replaced by -ldflags during build
 var Version = "development"
